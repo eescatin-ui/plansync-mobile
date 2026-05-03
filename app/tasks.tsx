@@ -1,19 +1,12 @@
 // app/tasks.tsx
+// app/tasks.tsx - LOGIC ONLY (keep your existing styles and return JSX)
 import { FontAwesome5 } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
-  Alert,
-  Modal,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+  Alert, Modal, ScrollView, StatusBar, StyleSheet,
+  Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
-import AppHeader from '../components/AppHeader';
-import BottomNav from '../components/BottomNav';
+import { useData } from '../contexts/DataContext';
 import { apiFetch } from '../services/api';
 
 type TaskItem = {
@@ -29,7 +22,7 @@ type TaskItem = {
 };
 
 export default function TasksScreen() {
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const { tasks, refreshData } = useData();
   const [filter, setFilter] = useState<'all' | 'todo' | 'inprogress' | 'done'>('all');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [searchQuery, setSearchQuery] = useState('');
@@ -41,16 +34,12 @@ export default function TasksScreen() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Date picker state
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedDay, setSelectedDay] = useState(new Date().getDate());
 
   const [form, setForm] = useState({
-    id: '',
-    title: '',
-    description: '',
-    dueDate: '',
+    id: '', title: '', description: '', dueDate: '',
     priority: 'medium' as 'high' | 'medium' | 'low',
     status: 'todo' as 'todo' | 'inprogress' | 'done',
   });
@@ -58,202 +47,126 @@ export default function TasksScreen() {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
 
-  useEffect(() => {
-    loadTasks();
-  }, []);
-
-const loadTasks = async () => {
-    try {
-      const data = await apiFetch('/tasks');
-      if (data && data.length > 0) {
-        setTasks(data);
-      }
-    } catch (error) {
-      console.error('Error loading tasks:', error);
-    }
-  };
-
-const getFilteredTasks = () => {
-    let filtered = [...tasks];
+  const getFilteredTasks = () => {
+    let filtered = [...(tasks || [])];
     if (searchQuery) {
-      filtered = filtered.filter(t => 
-        t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.description.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter((t: any) => t.title?.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q));
     }
-    if (filter !== 'all') {
-      filtered = filtered.filter(t => t.status === filter);
-    }
-    
-    // Sort: Overdue first → Closest due date → No due date last
-    return filtered.sort((a, b) => {
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
-      
-      const dateA = a.dueDate ? new Date(a.dueDate) : null;
-      const dateB = b.dueDate ? new Date(b.dueDate) : null;
-      
-      // No due date goes to bottom
-      if (!dateA && !dateB) return 0;
-      if (!dateA) return 1;
-      if (!dateB) return -1;
-      
-      dateA.setHours(0, 0, 0, 0);
-      dateB.setHours(0, 0, 0, 0);
-      
-      const isOverdueA = dateA < now;
-      const isOverdueB = dateB < now;
-      
-      // Both overdue: closest to today first
-      if (isOverdueA && isOverdueB) return dateA.getTime() - dateB.getTime();
-      // A is overdue, B is not: A first
-      if (isOverdueA) return -1;
-      // B is overdue, A is not: B first
-      if (isOverdueB) return 1;
-      
-      // Both future: closest due date first
-      return dateA.getTime() - dateB.getTime();
+    if (filter !== 'all') filtered = filtered.filter((t: any) => t.status === filter);
+    return filtered.sort((a: any, b: any) => {
+      const now = new Date(); now.setHours(0,0,0,0);
+      const dA = a.dueDate ? new Date(a.dueDate) : null;
+      const dB = b.dueDate ? new Date(b.dueDate) : null;
+      if (!dA && !dB) return 0;
+      if (!dA) return 1;
+      if (!dB) return -1;
+      dA.setHours(0,0,0,0); dB.setHours(0,0,0,0);
+      const ovA = dA < now, ovB = dB < now;
+      if (ovA && ovB) return dA.getTime() - dB.getTime();
+      if (ovA) return -1;
+      if (ovB) return 1;
+      return dA.getTime() - dB.getTime();
     });
   };
 
-  const getActiveTasks = () => getFilteredTasks().filter(t => t.status !== 'done');
-  const getCompletedTasks = () => getFilteredTasks().filter(t => t.status === 'done');
+  const getActiveTasks = () => getFilteredTasks().filter((t: any) => t.status !== 'done');
+  const getCompletedTasks = () => getFilteredTasks().filter((t: any) => t.status === 'done');
 
   const getTaskCounts = () => ({
-    all: tasks.length,
-    todo: tasks.filter(t => t.status === 'todo').length,
-    inprogress: tasks.filter(t => t.status === 'inprogress').length,
-    done: tasks.filter(t => t.status === 'done').length,
+    all: (tasks || []).length,
+    todo: (tasks || []).filter((t: any) => t.status === 'todo').length,
+    inprogress: (tasks || []).filter((t: any) => t.status === 'inprogress').length,
+    done: (tasks || []).filter((t: any) => t.status === 'done').length,
   });
 
   const isOverdue = (dueDate: string) => {
     if (!dueDate) return false;
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const due = new Date(dueDate); due.setHours(0, 0, 0, 0);
-    return due < today;
+    const t = new Date(); t.setHours(0,0,0,0);
+    const d = new Date(dueDate); d.setHours(0,0,0,0);
+    return d < t;
   };
 
   const isToday = (dueDate: string) => {
     if (!dueDate) return false;
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const due = new Date(dueDate); due.setHours(0, 0, 0, 0);
-    return due.getTime() === today.getTime();
+    const t = new Date(); t.setHours(0,0,0,0);
+    const d = new Date(dueDate); d.setHours(0,0,0,0);
+    return d.getTime() === t.getTime();
   };
 
   const formatDate = (dateString: string) => {
     if (!dateString) return 'No date';
     const date = new Date(dateString);
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const due = new Date(dateString); due.setHours(0, 0, 0, 0);
-    const diffDays = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffDays < 0 && date.toDateString() !== today.toDateString()) return 'Yesterday';
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Tomorrow';
+    const today = new Date(); today.setHours(0,0,0,0);
+    const due = new Date(dateString); due.setHours(0,0,0,0);
+    const diff = Math.ceil((due.getTime() - today.getTime()) / 86400000);
+    if (diff < 0) return 'Overdue';
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Tomorrow';
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
   const openAddModal = () => {
     setModalMode('add');
-    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-    setForm({ id: '', title: '', description: '', dueDate: tomorrow.toISOString().split('T')[0], priority: 'medium', status: 'todo' });
+    const tm = new Date(); tm.setDate(tm.getDate()+1);
+    setForm({ id: '', title: '', description: '', dueDate: tm.toISOString().split('T')[0], priority: 'medium', status: 'todo' });
     setShowModal(true);
   };
 
   const openEditModal = (task: TaskItem) => {
     setModalMode('edit');
-    setForm({
-      id: task.id,
-      title: task.title,
-      description: task.description,
-      dueDate: task.dueDate || '',
-      priority: task.priority,
-      status: task.status,
-    });
+    setForm({ id: task.id, title: task.title, description: task.description, dueDate: task.dueDate || '', priority: task.priority, status: task.status });
     setShowModal(true);
   };
 
   const openDatePicker = () => {
     if (form.dueDate) {
       const d = new Date(form.dueDate);
-      setSelectedYear(d.getFullYear());
-      setSelectedMonth(d.getMonth());
-      setSelectedDay(d.getDate());
+      setSelectedYear(d.getFullYear()); setSelectedMonth(d.getMonth()); setSelectedDay(d.getDate());
     }
     setShowDatePicker(true);
   };
 
   const confirmDate = () => {
-    const dateStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
-    setForm(prev => ({ ...prev, dueDate: dateStr }));
+    setForm(p => ({ ...p, dueDate: `${selectedYear}-${String(selectedMonth+1).padStart(2,'0')}-${String(selectedDay).padStart(2,'0')}` }));
     setShowDatePicker(false);
   };
 
-// REPLACE the whole saveTask function:
-const saveTask = async () => {
+  // ========== CRUD ==========
+  const saveTask = async () => {
     if (!form.title.trim()) { Alert.alert('Error', 'Task title is required.'); return; }
     setSaving(true);
     try {
+      const body = JSON.stringify({ title: form.title.trim(), description: form.description.trim(), due_date: form.dueDate, priority: form.priority, status: form.status });
       if (modalMode === 'add') {
-        const newTask = await apiFetch('/tasks', {
-          method: 'POST',
-          body: JSON.stringify({
-            title: form.title.trim(),
-            description: form.description.trim(),
-            due_date: form.dueDate,
-            priority: form.priority,
-            status: form.status,
-          }),
-        });
-        setTasks(prev => [...prev, newTask]);
+        await apiFetch('/tasks', { method: 'POST', body });
       } else {
-        const updatedTask = await apiFetch(`/tasks/${form.id}`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            title: form.title.trim(),
-            description: form.description.trim(),
-            due_date: form.dueDate,
-            priority: form.priority,
-            status: form.status,
-          }),
-        });
-        setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
+        await apiFetch(`/tasks/${form.id}`, { method: 'PUT', body });
       }
+      refreshData();
+      Alert.alert('Success', `Task ${modalMode==='add'?'added':'updated'}!`);
       setShowModal(false);
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to save task.');
-    } finally { setSaving(false); }
+    } catch (e: any) { Alert.alert('Error', e.message || 'Failed to save.'); }
+    finally { setSaving(false); }
   };
 
   const confirmDeleteTask = (task: TaskItem) => { setTaskToDelete(task); setShowDeleteModal(true); };
-const deleteTask = async () => {
+
+  const deleteTask = async () => {
     if (!taskToDelete) return; setDeleting(true);
-    try { 
-      await apiFetch(`/tasks/${taskToDelete.id}`, { method: 'DELETE' }); 
-      setTasks(prev => prev.filter(t => t.id !== taskToDelete.id)); 
-      setShowDeleteModal(false); 
-      setTaskToDelete(null); 
-    }
-    catch (error: any) { Alert.alert('Error', error.message || 'Failed to delete task.'); }
+    try {
+      await apiFetch(`/tasks/${taskToDelete.id}`, { method: 'DELETE' });
+      refreshData();
+      setShowDeleteModal(false); setTaskToDelete(null);
+    } catch (e: any) { Alert.alert('Error', e.message || 'Failed to delete.'); }
     finally { setDeleting(false); }
   };
 
   const markAsComplete = async (task: TaskItem) => {
-    const updatedTask = { ...task, status: 'done' as const, completedAt: new Date().toISOString() };
     try {
-      const savedTask = await apiFetch(`/tasks/${task.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          title: updatedTask.title,
-          description: updatedTask.description,
-          due_date: updatedTask.dueDate,
-          priority: updatedTask.priority,
-          status: updatedTask.status,
-        }),
-      });
-      setTasks(prev => prev.map(t => t.id === task.id ? { ...updatedTask, ...savedTask } : t));
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to mark task complete.');
-    }
+      await apiFetch(`/tasks/${task.id}`, { method: 'PUT', body: JSON.stringify({ title: task.title, description: task.description, due_date: task.dueDate, priority: task.priority, status: 'done' }) });
+      refreshData();
+    } catch (e: any) { Alert.alert('Error', e.message || 'Failed to update.'); }
   };
 
   const renderTaskCard = (task: TaskItem) => {
@@ -261,15 +174,10 @@ const deleteTask = async () => {
     const today = isToday(task.dueDate);
     return (
       <TouchableOpacity key={task.id} style={[
-  styles.taskCard,
-  viewMode === 'grid' && styles.taskCardGrid,
-  task.priority === 'high' && styles.priorityHigh,
-  task.priority === 'medium' && styles.priorityMedium,
-  task.priority === 'low' && styles.priorityLow,
-  task.status === 'done' && styles.taskDone,
-  overdue && task.status !== 'done' && styles.taskOverdue,
-  today && task.status !== 'done' && !overdue && styles.taskDueToday,
-]}>
+        styles.taskCard, viewMode === 'grid' && styles.taskCardGrid,
+        task.priority === 'high' && styles.priorityHigh, task.priority === 'medium' && styles.priorityMedium, task.priority === 'low' && styles.priorityLow,
+        task.status === 'done' && styles.taskDone, overdue && task.status !== 'done' && styles.taskOverdue, today && task.status !== 'done' && !overdue && styles.taskDueToday,
+      ]} onPress={() => openEditModal(task)} onLongPress={() => confirmDeleteTask(task)}>
         <View style={[styles.cardHeader, viewMode === 'grid' && styles.cardHeaderGrid]}>
           <View style={[styles.statusBadge, task.status === 'todo' && styles.statusTodo, task.status === 'inprogress' && styles.statusInProgress, task.status === 'done' && styles.statusDone]}>
             <Text style={[styles.statusText, task.status === 'todo' && styles.statusTextTodo, task.status === 'inprogress' && styles.statusTextInProgress, task.status === 'done' && styles.statusTextDone]}>
@@ -278,32 +186,13 @@ const deleteTask = async () => {
           </View>
           <View style={styles.priorityBadge}>
             <FontAwesome5 name="flag" size={10} color={task.priority === 'high' ? '#e63946' : task.priority === 'medium' ? '#ffb300' : '#28a745'} />
-            <Text style={[styles.priorityText, task.priority === 'high' && styles.priorityTextHigh, task.priority === 'medium' && styles.priorityTextMedium, task.priority === 'low' && styles.priorityTextLow]}>{task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}</Text>
+            <Text style={[styles.priorityText, task.priority === 'high' && styles.priorityTextHigh, task.priority === 'medium' && styles.priorityTextMedium, task.priority === 'low' && styles.priorityTextLow]}>
+              {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+            </Text>
           </View>
         </View>
-        <Text 
-  style={[
-    styles.taskTitle, 
-    viewMode === 'grid' && styles.taskTitleGrid,
-    task.status === 'done' && styles.taskTitleDone,
-  ]} 
-  numberOfLines={viewMode === 'grid' ? 2 : 1}
-  ellipsizeMode="tail"
->
-  {task.title}
-</Text>
-        {task.description ? (
-  <Text 
-    style={[
-      styles.taskDescription,
-      viewMode === 'grid' && styles.taskDescriptionGrid,
-    ]} 
-    numberOfLines={viewMode === 'grid' ? 2 : 3}
-    ellipsizeMode="tail"
-  >
-    {task.description}
-  </Text>
-) : null}
+        <Text style={[styles.taskTitle, viewMode === 'grid' && styles.taskTitleGrid, task.status === 'done' && styles.taskTitleDone]} numberOfLines={viewMode === 'grid' ? 2 : 1}>{task.title}</Text>
+        {task.description ? <Text style={[styles.taskDescription, viewMode === 'grid' && styles.taskDescriptionGrid]} numberOfLines={viewMode === 'grid' ? 2 : 3}>{task.description}</Text> : null}
         <View style={[styles.cardFooter, viewMode === 'grid' && styles.cardFooterGrid]}>
           <View style={styles.dueDate}>
             <FontAwesome5 name="calendar-alt" size={10} color="#94a3b8" />
@@ -311,27 +200,13 @@ const deleteTask = async () => {
             {overdue && task.status !== 'done' && <View style={styles.overdueTag}><Text style={styles.overdueTagText}>Overdue</Text></View>}
             {today && task.status !== 'done' && !overdue && <View style={styles.todayTag}><Text style={styles.todayTagText}>Today</Text></View>}
           </View>
-<View style={styles.taskActions}>
-  {task.status === 'todo' && (
-    <TouchableOpacity onPress={() => markAsComplete(task)}>
-      <FontAwesome5 name="circle" size={16} color="#94a3b8" />
-    </TouchableOpacity>
-  )}
-  {task.status === 'inprogress' && (
-    <TouchableOpacity onPress={() => markAsComplete(task)}>
-      <FontAwesome5 name="spinner" size={16} color="#4361ee" />
-    </TouchableOpacity>
-  )}
-  {task.status === 'done' && (
-    <FontAwesome5 name="check-circle" size={16} color="#28a745" />
-  )}
-  <TouchableOpacity onPress={() => openEditModal(task)}>
-    <FontAwesome5 name="edit" size={16} color="#94a3b8" />
-  </TouchableOpacity>
-  <TouchableOpacity onPress={() => confirmDeleteTask(task)}>
-    <FontAwesome5 name="trash-alt" size={16} color="#94a3b8" />
-  </TouchableOpacity>
-</View>
+          <View style={styles.taskActions}>
+            {task.status === 'todo' && <TouchableOpacity onPress={() => markAsComplete(task)}><FontAwesome5 name="circle" size={16} color="#94a3b8" /></TouchableOpacity>}
+            {task.status === 'inprogress' && <TouchableOpacity onPress={() => markAsComplete(task)}><FontAwesome5 name="spinner" size={16} color="#4361ee" /></TouchableOpacity>}
+            {task.status === 'done' && <FontAwesome5 name="check-circle" size={16} color="#28a745" />}
+            <TouchableOpacity onPress={() => openEditModal(task)}><FontAwesome5 name="edit" size={16} color="#94a3b8" /></TouchableOpacity>
+            <TouchableOpacity onPress={() => confirmDeleteTask(task)}><FontAwesome5 name="trash-alt" size={16} color="#94a3b8" /></TouchableOpacity>
+          </View>
         </View>
         {task.status === 'inprogress' && <View style={styles.progressBar}><View style={[styles.progressFill, { width: '50%' }]} /></View>}
       </TouchableOpacity>
@@ -346,7 +221,6 @@ const deleteTask = async () => {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fbfdff" />
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <AppHeader title="Tasks" icon="tasks" />
 
         {/* Stats Filter Chips */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsRow}>
@@ -546,7 +420,6 @@ const deleteTask = async () => {
         </View>
       </Modal>
 
-      <BottomNav />
     </View>
   );
 }

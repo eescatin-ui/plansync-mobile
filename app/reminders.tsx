@@ -1,61 +1,33 @@
 // app/reminders.tsx
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
-  Alert,
-  Modal,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+  Alert, Modal, ScrollView, StatusBar, StyleSheet,
+  Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
-import AppHeader from '../components/AppHeader';
-import BottomNav from '../components/BottomNav';
+import { useData } from '../contexts/DataContext';
 import { apiFetch } from '../services/api';
+
 type ClassItem = {
-  id: string;
-  name: string;
-  time: string;
-  location: string;
-  day: string;
-  color: string;
+  id: string; name: string; time: string; location: string; day: string; color: string;
 };
 
 type TaskItem = {
-  id: string;
-  title: string;
-  description: string;
-  dueDate: string;
-  priority: 'high' | 'medium' | 'low';
-  status: 'todo' | 'inprogress' | 'done';
+  id: string; title: string; description: string; dueDate: string; priority: 'high' | 'medium' | 'low'; status: 'todo' | 'inprogress' | 'done';
 };
 
 type ReminderItem = {
-  id: string;
-  title: string;
-  subtitle: string;
-  time: string;
-  type: 'class' | 'task' | 'personal';
-  status?: string;
-  priority?: string;
-  color: string;
-  icon: string;
-  originalId: string;
-  createdAt: string;
+  id: string; title: string; subtitle: string; time: string; type: 'class' | 'task' | 'personal';
+  status?: string; priority?: string; color: string; icon: string; originalId: string; createdAt: string;
 };
 
 export default function RemindersScreen() {
   const router = useRouter();
+  const { classes, tasks, reminders: personalReminders, refreshData } = useData();
   const [filter, setFilter] = useState<'today' | 'tomorrow' | 'personal'>('today');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [searchQuery, setSearchQuery] = useState('');
-  const [classes, setClasses] = useState<ClassItem[]>([]);
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [personalReminders, setPersonalReminders] = useState<ReminderItem[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
   const [saving, setSaving] = useState(false);
@@ -64,22 +36,16 @@ export default function RemindersScreen() {
   const [deleting, setDeleting] = useState(false);
 
   const [form, setForm] = useState({
-    id: '',
-    title: '',
-    subtitle: '',
-    time: '',
-    type: 'personal' as 'class' | 'task' | 'personal',
-    color: '#4361ee',
+    id: '', title: '', subtitle: '', time: '',
+    type: 'personal' as 'class' | 'task' | 'personal', color: '#4361ee',
   });
 
-  // Date picker state
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [reminderYear, setReminderYear] = useState(new Date().getFullYear());
   const [reminderMonth, setReminderMonth] = useState(new Date().getMonth());
   const [reminderDay, setReminderDay] = useState(new Date().getDate());
   const [reminderDate, setReminderDate] = useState('');
 
-  // Time picker state
   const [reminderStartHour, setReminderStartHour] = useState('9');
   const [reminderStartMinute, setReminderStartMinute] = useState('00');
   const [reminderStartPeriod, setReminderStartPeriod] = useState('AM');
@@ -94,322 +60,138 @@ export default function RemindersScreen() {
   const periods = ['AM', 'PM'];
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const getToday = () => new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  const getTomorrow = () => { const t = new Date(); t.setDate(t.getDate()+1); return t.toLocaleDateString('en-US', { weekday: 'long' }); };
 
- const loadData = async () => {
-    try {
-      const [savedClasses, savedTasks, savedReminders] = await Promise.all([
-        apiFetch('/courses'),
-        apiFetch('/tasks'),
-        apiFetch('/reminders'),
-      ]);
-      if (savedClasses) setClasses(savedClasses);
-      if (savedTasks) setTasks(savedTasks);
-      if (savedReminders) setPersonalReminders(savedReminders);
-    } catch (error) {
-      console.error('Error loading data:', error);
-    }
+  const convertTimeToMinutes = (ts: string) => {
+    if (!ts) return 0;
+    let h = 0, m = 0, pm = false;
+    const am = ts.match(/(am|pm)/i);
+    if (am) pm = am[1].toLowerCase() === 'pm';
+    const tp = ts.replace(/(am|pm)/i, '').trim().split(':');
+    h = parseInt(tp[0],10)||0; m = parseInt(tp[1],10)||0;
+    if (pm && h < 12) h += 12;
+    if (!pm && h === 12) h = 0;
+    return h*60+m;
   };
 
-  // Get today's date info
-  const getToday = () => {
-    const now = new Date();
-    return now.toLocaleDateString('en-US', { weekday: 'long' });
+  const formatDate = (ds: string) => {
+    if (!ds) return '';
+    return new Date(ds).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const getTomorrow = () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toLocaleDateString('en-US', { weekday: 'long' });
+  const formatDateFull = (ds: string) => {
+    if (!ds) return '';
+    const [y, mo, d] = ds.split('-').map(Number);
+    return `${months[mo-1]} ${d}, ${y}`;
   };
 
-  // Convert class to reminder format
-  const classToReminder = (cls: ClassItem): any => {
-    const today = getToday();
-    const isToday = cls.day === today;
-    const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    
-    const timeParts = cls.time.split('-');
-    const startTime = timeParts[0]?.trim() || '';
-    const endTime = timeParts[1]?.trim() || '';
-    
-    const startMinutes = convertTimeToMinutes(startTime);
-    const endMinutes = convertTimeToMinutes(endTime);
-    const isNow = isToday && currentMinutes >= startMinutes && currentMinutes <= endMinutes;
-    const isSoon = isToday && !isNow && startMinutes > currentMinutes && (startMinutes - currentMinutes) <= 60;
+  const formatStatus = (s: string) => ({ 'todo':'To Do', 'inprogress':'In Progress', 'done':'Done' } as any)[s] || s;
 
-    let badge = 'Class';
-    let badgeColor = '#17a2b8';
-    let cardColor = '#17a2b8';
-    let timeDisplay = `${startTime} - ${endTime}`;
-    
-    if (isNow) {
-      badge = 'Now';
-      badgeColor = '#e63946';
-      cardColor = '#e63946';
-      timeDisplay = `Now · ${startTime} - ${endTime}`;
-    } else if (isSoon) {
-      badge = 'Soon';
-      badgeColor = '#f72585';
-      cardColor = '#f72585';
-      timeDisplay = `${startTime} - ${endTime}`;
-    }
-
+  const classToReminder = (cls: any): any => {
+    const today = getToday(); const isToday = cls.day === today;
+    const now = new Date(); const cm = now.getHours()*60+now.getMinutes();
+    const parts = (cls.time||'').split('-');
+    const st = parts[0]?.trim()||'', et = parts[1]?.trim()||'';
+    const sm = convertTimeToMinutes(st), em = convertTimeToMinutes(et);
+    const isNow = isToday && cm >= sm && cm <= em;
+    const isSoon = isToday && !isNow && sm > cm && (sm-cm) <= 60;
     return {
-      id: `class-${cls.id}`,
-      title: cls.name,
-      subtitle: `${cls.location}`,
-      time: timeDisplay,
-      type: 'class',
-      color: cardColor,
-      icon: 'book-open',
-      originalId: cls.id,
-      createdAt: '',
-      badge,
-      badgeColor,
+      id: `class-${cls.id}`, title: cls.name, subtitle: cls.location||'',
+      time: isNow ? `Now · ${st} - ${et}` : `${st} - ${et}`,
+      type: 'class', color: isNow ? '#e63946' : isSoon ? '#f72585' : '#17a2b8',
+      icon: 'book-open', originalId: cls.id, createdAt: '',
+      badge: isNow ? 'Now' : isSoon ? 'Soon' : 'Class',
+      badgeColor: isNow ? '#e63946' : isSoon ? '#f72585' : '#17a2b8',
     };
   };
 
-  // Convert task to reminder format
-  const taskToReminder = (task: TaskItem): any => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dueDate = new Date(task.dueDate);
-    dueDate.setHours(0, 0, 0, 0);
-    const isOverdue = dueDate < today;
-    
-    let timeDisplay = `Due ${formatDate(task.dueDate)}`;
-    let color = task.priority === 'high' ? '#dc3545' : task.priority === 'medium' ? '#ffb300' : '#28a745';
-    
-    if (isOverdue) {
-      timeDisplay = 'Overdue';
-      color = '#dc3545';
-    }
-
+  const taskToReminder = (task: any): any => {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const dd = new Date(task.dueDate); dd.setHours(0,0,0,0);
+    const ov = dd < today;
     return {
-      id: `task-${task.id}`,
-      title: task.title,
-      subtitle: task.description || 'No description',
-      time: timeDisplay,
-      type: 'task',
-      status: `${formatStatus(task.status)} · ${task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}`,
-      priority: task.priority,
-      color,
-      icon: 'flag',
-      originalId: task.id,
-      createdAt: '',
-      badge: 'Task',
-      badgeColor: '#ffb300',
-      statusStyle: task.status,
+      id: `task-${task.id}`, title: task.title, subtitle: task.description||'',
+      time: ov ? 'Overdue' : `Due ${formatDate(task.dueDate)}`,
+      type: 'task', status: `${formatStatus(task.status)} · ${task.priority?.charAt(0).toUpperCase()+task.priority?.slice(1)}`,
+      priority: task.priority, color: ov ? '#dc3545' : task.priority==='high'?'#dc3545':task.priority==='medium'?'#ffb300':'#28a745',
+      icon: 'flag', originalId: task.id, createdAt: '',
+      badge: 'Task', badgeColor: '#ffb300', statusStyle: task.status,
     };
   };
 
-  const convertTimeToMinutes = (timeStr: string) => {
-    if (!timeStr) return 0;
-    let hours = 0, minutes = 0, isPM = false;
-    const ampmMatch = timeStr.match(/(am|pm)/i);
-    if (ampmMatch) isPM = ampmMatch[1].toLowerCase() === 'pm';
-    const timeParts = timeStr.replace(/(am|pm)/i, '').trim().split(':');
-    hours = parseInt(timeParts[0], 10) || 0;
-    minutes = parseInt(timeParts[1], 10) || 0;
-    if (isPM && hours < 12) hours += 12;
-    if (!isPM && hours === 12) hours = 0;
-    return hours * 60 + minutes;
-  };
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
-
-  const formatDateFull = (dateStr: string) => {
-    if (!dateStr) return '';
-    const [year, month, day] = dateStr.split('-');
-    return `${months[parseInt(month) - 1]} ${parseInt(day)}, ${year}`;
-  };
-
-  const formatStatus = (status: string) => {
-    const map: Record<string, string> = { 'todo': 'To Do', 'inprogress': 'In Progress', 'done': 'Done' };
-    return map[status] || status;
-  };
-
-  // Get filtered reminders
   const getFilteredReminders = (): any[] => {
-    const today = getToday();
-    const tomorrow = getTomorrow();
-    
-    const classReminders = classes.map(classToReminder);
-    const taskReminders = tasks.filter(t => t.status !== 'done').map(taskToReminder);
-    
+    const today = getToday(), tomorrow = getTomorrow();
+    const cr = (classes||[]).map(classToReminder);
+    const tr = (tasks||[]).filter((t: any) => t.status !== 'done').map(taskToReminder);
     let all: any[] = [];
-    
     if (filter === 'today') {
-      all = [
-        ...classReminders.filter(r => classes.find(c => `class-${c.id}` === r.id)?.day === today),
-        ...taskReminders.filter(r => {
-          const task = tasks.find(t => `task-${t.id}` === r.id);
-          if (!task) return false;
-          const dueDate = new Date(task.dueDate);
-          dueDate.setHours(0, 0, 0, 0);
-          const now = new Date();
-          now.setHours(0, 0, 0, 0);
-          return dueDate <= now;
-        }),
-      ];
+      all = [...cr.filter((r: any) => (classes||[]).find((c: any) => `class-${c.id}`===r.id)?.day===today),
+        ...tr.filter((r: any) => { const t = (tasks||[]).find((x: any) => `task-${x.id}`===r.id);
+          if (!t) return false; const d = new Date(t.dueDate); d.setHours(0,0,0,0); const n = new Date(); n.setHours(0,0,0,0); return d <= n; })];
     } else if (filter === 'tomorrow') {
-      all = [
-        ...classReminders.filter(r => classes.find(c => `class-${c.id}` === r.id)?.day === tomorrow),
-        ...taskReminders.filter(r => {
-          const task = tasks.find(t => `task-${t.id}` === r.id);
-          if (!task) return false;
-          const dueDate = new Date(task.dueDate);
-          dueDate.setHours(0, 0, 0, 0);
-          const tomorrowDate = new Date();
-          tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-          tomorrowDate.setHours(0, 0, 0, 0);
-          return dueDate.getTime() === tomorrowDate.getTime();
-        }),
-      ];
+      all = [...cr.filter((r: any) => (classes||[]).find((c: any) => `class-${c.id}`===r.id)?.day===tomorrow),
+        ...tr.filter((r: any) => { const t = (tasks||[]).find((x: any) => `task-${x.id}`===r.id);
+          if (!t) return false; const d = new Date(t.dueDate); d.setHours(0,0,0,0); const tm = new Date(); tm.setDate(tm.getDate()+1); tm.setHours(0,0,0,0); return d.getTime()===tm.getTime(); })];
     } else {
-      all = [...personalReminders];
+      all = [...(personalReminders||[])];
     }
-
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      all = all.filter(r => 
-        r.title.toLowerCase().includes(query) ||
-        r.subtitle.toLowerCase().includes(query)
-      );
-    }
+    if (searchQuery) { const q = searchQuery.toLowerCase(); all = all.filter((r: any) => r.title?.toLowerCase().includes(q) || r.subtitle?.toLowerCase().includes(q)); }
     return all;
   };
 
-  const getClasses = () => getFilteredReminders().filter(r => r.type === 'class');
-  const getTasks = () => getFilteredReminders().filter(r => r.type === 'task');
-  const getPersonal = () => getFilteredReminders().filter(r => r.type === 'personal');
+  const getClasses = () => getFilteredReminders().filter((r: any) => r.type==='class');
+  const getTasks = () => getFilteredReminders().filter((r: any) => r.type==='task');
+  const getPersonal = () => getFilteredReminders().filter((r: any) => r.type==='personal');
 
   const handleCardPress = (item: any) => {
-    if (item.type === 'class') {
-      router.push('/schedule');
-    } else if (item.type === 'task') {
-      router.push('/tasks');
-    }
+    if (item.type==='class') router.push('/schedule');
+    else if (item.type==='task') router.push('/tasks');
   };
 
-  // Date picker functions
-  const openDatePicker = () => {
-    if (reminderDate) {
-      const [y, m, d] = reminderDate.split('-').map(Number);
-      setReminderYear(y);
-      setReminderMonth(m - 1);
-      setReminderDay(d);
-    }
-    setShowDatePicker(true);
-  };
+  const openDatePicker = () => { if (reminderDate) { const [y,m,d]=reminderDate.split('-').map(Number); setReminderYear(y); setReminderMonth(m-1); setReminderDay(d); } setShowDatePicker(true); };
+  const confirmReminderDate = () => { setReminderDate(`${reminderYear}-${String(reminderMonth+1).padStart(2,'0')}-${String(reminderDay).padStart(2,'0')}`); setShowDatePicker(false); };
 
-  const confirmReminderDate = () => {
-    const dateStr = `${reminderYear}-${String(reminderMonth + 1).padStart(2, '0')}-${String(reminderDay).padStart(2, '0')}`;
-    setReminderDate(dateStr);
-    setShowDatePicker(false);
-  };
-
-  // CRUD for personal reminders
   const openAddModal = () => {
     setModalMode('add');
-    setForm({ id: '', title: '', subtitle: '', time: '', type: 'personal', color: '#4361ee' });
-    setReminderDate('');
-    setReminderStartHour('9');
-    setReminderStartMinute('00');
-    setReminderStartPeriod('AM');
+    setForm({ id:'', title:'', subtitle:'', time:'', type:'personal', color:'#4361ee' });
+    setReminderDate(''); setReminderStartHour('9'); setReminderStartMinute('00'); setReminderStartPeriod('AM');
     setShowModal(true);
   };
 
   const openEditModal = (item: ReminderItem) => {
     setModalMode('edit');
-    setForm({
-      id: item.id,
-      title: item.title,
-      subtitle: item.subtitle,
-      time: item.time,
-      type: item.type,
-      color: item.color,
-    });
-    setReminderDate('');
-    setReminderStartHour('9');
-    setReminderStartMinute('00');
-    setReminderStartPeriod('AM');
+    setForm({ id:item.id, title:item.title, subtitle:item.subtitle, time:item.time, type:item.type, color:item.color });
+    setReminderDate(''); setReminderStartHour('9'); setReminderStartMinute('00'); setReminderStartPeriod('AM');
     setShowModal(true);
   };
 
-const saveReminder = async () => {
-    if (!form.title.trim()) {
-      Alert.alert('Error', 'Reminder title is required.');
-      return;
-    }
+  const saveReminder = async () => {
+    if (!form.title.trim()) { Alert.alert('Error','Reminder title is required.'); return; }
     setSaving(true);
     try {
-      const timeStr = `${reminderStartHour}:${reminderStartMinute} ${reminderStartPeriod}`;
-      const fullTimeStr = reminderDate ? `${formatDateFull(reminderDate)}, ${timeStr}` : timeStr;
-      
-      if (modalMode === 'add') {
-        const newReminder = await apiFetch('/reminders', {
-          method: 'POST',
-          body: JSON.stringify({
-            title: form.title.trim(),
-            subtitle: form.subtitle.trim(),
-            time: fullTimeStr,
-            type: 'personal',
-            color: form.color,
-            icon: 'bell',
-          }),
-        });
-        setPersonalReminders(prev => [...prev, newReminder]);
+      const ts = `${reminderStartHour}:${reminderStartMinute} ${reminderStartPeriod}`;
+      const fts = reminderDate ? `${formatDateFull(reminderDate)}, ${ts}` : ts;
+      const body = JSON.stringify({ title:form.title.trim(), subtitle:form.subtitle.trim(), time:fts, type:'personal', color:form.color, icon:'bell' });
+      if (modalMode==='add') {
+        await apiFetch('/reminders', { method:'POST', body });
       } else {
-        const updatedReminder = await apiFetch(`/reminders/${form.id}`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            title: form.title.trim(),
-            subtitle: form.subtitle.trim(),
-            time: fullTimeStr,
-            type: 'personal',
-            color: form.color,
-            icon: 'bell',
-          }),
-        });
-        setPersonalReminders(prev => prev.map(r => r.id === updatedReminder.id ? updatedReminder : r));
+        await apiFetch(`/reminders/${form.id}`, { method:'PUT', body });
       }
-      Alert.alert('Success', modalMode === 'add' ? 'Reminder added!' : 'Reminder updated!');
+      refreshData();
+      Alert.alert('Success', `Reminder ${modalMode==='add'?'added':'updated'}!`);
       setShowModal(false);
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to save reminder.');
-    } finally {
-      setSaving(false);
-    }
+    } catch (e: any) { Alert.alert('Error', e.message||'Failed to save.'); }
+    finally { setSaving(false); }
   };
 
-  const confirmDeleteReminder = (item: ReminderItem) => {
-    if (item.type !== 'personal') return;
-    setReminderToDelete(item);
-    setShowDeleteModal(true);
-  };
+  const confirmDeleteReminder = (item: ReminderItem) => { if (item.type!=='personal') return; setReminderToDelete(item); setShowDeleteModal(true); };
 
-const deleteReminder = async () => {
-    if (!reminderToDelete) return;
-    setDeleting(true);
-    try {
-      await apiFetch(`/reminders/${reminderToDelete.id}`, { method: 'DELETE' });
-      setPersonalReminders(prev => prev.filter(r => r.id !== reminderToDelete.id));
-      setShowDeleteModal(false);
-      setReminderToDelete(null);
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to delete reminder.');
-    } finally {
-      setDeleting(false);
-    }
+  const deleteReminder = async () => {
+    if (!reminderToDelete) return; setDeleting(true);
+    try { await apiFetch(`/reminders/${reminderToDelete.id}`, { method:'DELETE' }); refreshData(); setShowDeleteModal(false); setReminderToDelete(null); }
+    catch (e: any) { Alert.alert('Error', e.message||'Failed to delete.'); }
+    finally { setDeleting(false); }
   };
 
   const getStatusStyle = (statusStyle: string) => {
@@ -543,9 +325,8 @@ const deleteReminder = async () => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fbfdff" />
-      
+
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <AppHeader title="Reminders" icon="bell" />
 
         {/* Filter Tabs */}
         <View style={styles.filterTabs}>
@@ -837,7 +618,6 @@ const deleteReminder = async () => {
         </View>
       </Modal>
 
-      <BottomNav />
     </View>
   );
 }

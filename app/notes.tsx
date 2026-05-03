@@ -1,6 +1,6 @@
 // app/notes.tsx
 import { FontAwesome5 } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Alert,
   Modal,
@@ -12,8 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import AppHeader from '../components/AppHeader';
-import BottomNav from '../components/BottomNav';
+import { useData } from '../contexts/DataContext';
 import { apiFetch } from '../services/api';
 
 type NoteItem = {
@@ -27,7 +26,7 @@ type NoteItem = {
 };
 
 export default function NotesScreen() {
-  const [notes, setNotes] = useState<NoteItem[]>([]);
+  const { notes, refreshData } = useData();
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [searchQuery, setSearchQuery] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -44,32 +43,18 @@ export default function NotesScreen() {
     tags: '',
   });
 
-  useEffect(() => {
-    loadNotes();
-  }, []);
 
-const loadNotes = async () => {
-    try {
-      const data = await apiFetch('/notes');
-      if (data && data.length > 0) {
-        setNotes(data);
-      }
-    } catch (error: any) {
-      console.error('Error loading notes:', error.message || error);
-    }
-  };
-
-  const getFilteredNotes = () => {
+const getFilteredNotes = () => {
     let filtered = [...notes];
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(n => 
+      filtered = filtered.filter((n: any) => 
         n.title.toLowerCase().includes(query) ||
         n.content.toLowerCase().includes(query) ||
-        n.tags.some(tag => tag.toLowerCase().includes(query))
+        n.tags.some((tag: string) => tag.toLowerCase().includes(query))
       );
     }
-    return filtered.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    return filtered.sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   };
 
   const formatDate = (dateString: string) => {
@@ -122,7 +107,7 @@ const saveNote = async () => {
             tags: tagsArray,
           }),
         });
-        setNotes(prev => [newNote, ...prev]);
+        refreshData();
       } else {
         const updatedNote = await apiFetch(`/notes/${form.id}`, {
           method: 'PUT',
@@ -132,7 +117,7 @@ const saveNote = async () => {
             tags: tagsArray,
           }),
         });
-        setNotes(prev => prev.map(n => n.id === updatedNote.id ? updatedNote : n));
+        refreshData();
       }
       setShowModal(false);
     } catch (error: any) {
@@ -152,7 +137,7 @@ const deleteNote = async () => {
     setDeleting(true);
     try {
       await apiFetch(`/notes/${noteToDelete.id}`, { method: 'DELETE' });
-      setNotes(prev => prev.filter(n => n.id !== noteToDelete.id));
+      refreshData();
       setShowDeleteModal(false);
       setNoteToDelete(null);
     } catch (error: any) {
@@ -212,9 +197,8 @@ const deleteNote = async () => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fbfdff" />
-      
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <AppHeader title="Notes" icon="sticky-note" />
+      
 
         {/* Stats */}
         <View style={styles.statsRow}>
@@ -350,7 +334,6 @@ const deleteNote = async () => {
         </View>
       </Modal>
 
-      <BottomNav />
     </View>
   );
 }

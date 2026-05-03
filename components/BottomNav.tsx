@@ -3,6 +3,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
 
 type NavItem = {
   label: string;
@@ -14,50 +15,27 @@ type NavItem = {
 export default function BottomNav() {
   const router = useRouter();
   const pathname = usePathname();
+  const { colors, theme } = useTheme();
 
   const navItems: NavItem[] = [
-    { 
-      label: 'Home', 
-      icon: 'th-large', 
-      route: '/dashboard',
-      activeRoutes: ['/dashboard']
-    },
-    { 
-      label: 'Schedule', 
-      icon: 'calendar-week', 
-      route: '/schedule',
-      activeRoutes: ['/schedule']
-    },
-    { 
-      label: 'Tasks', 
-      icon: 'tasks', 
-      route: '/tasks',
-      activeRoutes: ['/tasks']
-    },
-    { 
-      label: 'Notes', 
-      icon: 'sticky-note', 
-      route: '/notes',
-      activeRoutes: ['/notes']
-    },
-    { 
-      label: 'Settings', 
-      icon: 'cog', 
-      route: '/settings',
-      activeRoutes: ['/settings']
-    },
+    { label: 'Home', icon: 'th-large', route: '/dashboard', activeRoutes: ['/dashboard'] },
+    { label: 'Schedule', icon: 'calendar-week', route: '/schedule', activeRoutes: ['/schedule'] },
+    { label: 'Tasks', icon: 'tasks', route: '/tasks', activeRoutes: ['/tasks'] },
+    { label: 'Notes', icon: 'sticky-note', route: '/notes', activeRoutes: ['/notes'] },
+    { label: 'Settings', icon: 'cog', route: '/settings', activeRoutes: ['/settings'] },
   ];
 
-  const isActive = (activeRoutes: string[]) => {
-    return activeRoutes.includes(pathname);
-  };
+  const isActive = (activeRoutes: string[]) => activeRoutes.includes(pathname);
 
   const handleNavigation = (route: string) => {
     router.push(route as any);
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { 
+      backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.94)', 
+      borderTopColor: theme === 'dark' ? '#1e293b' : '#edf2f7',
+    }]}>
       {navItems.map((item, index) => (
         <TouchableOpacity
           key={index}
@@ -67,11 +45,12 @@ export default function BottomNav() {
           <FontAwesome5
             name={item.icon}
             size={22}
-            color={isActive(item.activeRoutes) ? '#4361ee' : '#8c97a9'}
+            color={isActive(item.activeRoutes) ? '#4361ee' : theme === 'dark' ? '#94a3b8' : '#8c97a9'}
           />
           <Text
             style={[
               styles.navText,
+              { color: theme === 'dark' ? '#94a3b8' : '#8c97a9' },
               isActive(item.activeRoutes) && styles.navTextActive,
             ]}
           >
@@ -91,9 +70,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     paddingBottom: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.94)',
     borderTopWidth: 1,
-    borderTopColor: '#edf2f7',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.02,
@@ -107,7 +84,6 @@ const styles = StyleSheet.create({
   },
   navText: {
     fontSize: 11,
-    color: '#8c97a9',
     marginTop: 3,
     fontWeight: '500',
   },
